@@ -12,11 +12,13 @@ parser = etree.HTMLParser()
 fileNameWrite = "nodes_youneedwind.txt"
 fileNameRead = "youneedwind.html"
 vpingName = "./vping_c3_o5"
+vspeedName = './vspeed_10s'
 
 threadingNum = 200
-threads = []
+pingThreads = []
 
 vmessQueue = queue.Queue()
+vmessFinalOutQueue = queue.Queue()
 
 class vmessPingThread(threading.Thread):
     def __init__(self, vmessPart):
@@ -33,6 +35,25 @@ class vmessPingThread(threading.Thread):
             for _vm in vmessGood:
                 vmessQueue.put(_vm)
 
+class vmessSpeedTestThread(threading.Thread):
+    def __init__(self):
+        threading.Thread.__init__(self)
+
+    def run(self):
+        if vmessQueue.empty() is not True:
+            vm = vmessQueue.get()
+            print("\n")
+            print(vm)
+            testCmd = [vspeedName, vm]
+            runTest = subprocess.run(testCmd, capture_output=True, text=True)
+            try: 
+                down = runTest.stdout.split('\n')[13]
+                up = runTest.stdout.split('\n')[14]
+                print(down)
+                print(up)
+            except Exception as e: 
+                print(e)
+
 with open(fileNameRead, 'r') as f:
     data = f.read()
     tree = etree.parse(StringIO(data), parser)
@@ -43,17 +64,20 @@ with open(fileNameRead, 'r') as f:
         while(threading.activeCount() >= threadingNum):
             time.sleep(3)
         vmess.append(_tr.xpath('td/a')[0].attrib['data-raw'] + '\n')
-        thread = vmessPingThread(vmess)
-        threads.append(thread)
-        thread.start()
+        pingThread = vmessPingThread(vmess)
+        pingThreads.append(pingThread)
+        pingThread.start()
         vmess.clear()
 
-for index, thread in enumerate(threads):
-    print('waitting for: ', index)
+for index, thread in enumerate(pingThreads):
+    # print('waitting for: ', index)
     thread.join()
 
-print("finished")
+print("finished quiring!")
+print('start speed testing')
 
 while vmessQueue.empty() is not True:
-    print(vmessQueue.get())
+    speedThread = vmessSpeedTestThread()
+    speedThread.start()
+    speedThread.join()
 
