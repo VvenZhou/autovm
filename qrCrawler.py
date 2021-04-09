@@ -23,19 +23,19 @@ vmessWithSpeed = []
 vmessFinalOutQueue = queue.Queue()
 
 class vmessPingThread(threading.Thread):
-    def __init__(self, vmessPart):
+    def __init__(self, vm):
         threading.Thread.__init__(self)
-        self.vmessPart = vmessPart
+        self.vm = vm
 
     def run(self):
-        vmessGood = []
-        for _vm in self.vmessPart:
-            pingCmd = [vpingName, _vm]
-            runPing = subprocess.run(pingCmd, capture_output=True, text=True)
-            if runPing.stdout.split('\n')[-2] != 'rtt min/avg/max = 0/0/0 ms' and len(runPing.stdout.split('\n')) > 5:
-                vmessGood.append(_vm)
-            for _vm in vmessGood:
-                vmessQueue.put(_vm)
+        pingCmd = [vpingName, self.vm]
+        runPing = subprocess.run(pingCmd, capture_output=True, text=True)
+        try:
+            avgPing = re.findall(r"\d+\/(\d+)\/\d+",runPing.stdout.split('\n')[15])
+            if int(avgPing[0]) != 0:
+                vmessQueue.put(self.vm)
+        except Exception as e:
+            pass
 
 class vmessSpeedTestThread(threading.Thread):
     def __init__(self):
@@ -69,16 +69,14 @@ with open(fileNameRead, 'r') as f:
     tree = etree.parse(StringIO(data), parser)
     parent = tree.xpath('//*[@id="post-box"]/div/section/div[2]/table/tbody')
     trs = parent[0].xpath('tr')
-    vmess = []
+    vmess = ""
     for _tr in trs:
         while(threading.activeCount() >= threadingNum):
             time.sleep(3)
-        # vmess.append(_tr.xpath('td/a')[0].attrib['data-raw'] + '\n')
-        vmess.append(_tr.xpath('td/a')[0].attrib['data-raw'])
+        vmess = (_tr.xpath('td/a')[0].attrib['data-raw'])
         pingThread = vmessPingThread(vmess)
         pingThreads.append(pingThread)
         pingThread.start()
-        vmess.clear()
 
 for index, thread in enumerate(pingThreads):
     # print('waitting for: ', index)
