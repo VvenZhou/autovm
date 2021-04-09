@@ -6,6 +6,7 @@ import subprocess
 import threading
 import time
 import queue
+import re
 
 parser = etree.HTMLParser()
 
@@ -18,6 +19,7 @@ threadingNum = 200
 pingThreads = []
 
 vmessQueue = queue.Queue()
+vmessWithSpeed = []
 vmessFinalOutQueue = queue.Queue()
 
 class vmessPingThread(threading.Thread):
@@ -42,17 +44,25 @@ class vmessSpeedTestThread(threading.Thread):
     def run(self):
         if vmessQueue.empty() is not True:
             vm = vmessQueue.get()
-            print("\n")
             print(vm)
             testCmd = [vspeedName, vm]
             runTest = subprocess.run(testCmd, capture_output=True, text=True)
             try: 
-                down = runTest.stdout.split('\n')[13]
-                up = runTest.stdout.split('\n')[14]
-                print(down)
-                print(up)
+                downStr = runTest.stdout.split('\n')[13]
+                downSpeed = re.findall(r"\d+.\d+", downStr)
+                upStr = runTest.stdout.split('\n')[14]
+                upSpeed = re.findall(r"\d+.\d+", upStr)
+                vmessWithSpeed.append([vm, float(downSpeed[0]), float(upSpeed[0])])
+                print(downStr)
+                print(upStr)
             except Exception as e: 
                 print(e)
+
+def subscriptionDecoding():
+    pass
+
+def sorting():
+    vmessWithSpeed.sort(key=lambda down: down[1], reverse = True)
 
 with open(fileNameRead, 'r') as f:
     data = f.read()
@@ -63,7 +73,8 @@ with open(fileNameRead, 'r') as f:
     for _tr in trs:
         while(threading.activeCount() >= threadingNum):
             time.sleep(3)
-        vmess.append(_tr.xpath('td/a')[0].attrib['data-raw'] + '\n')
+        # vmess.append(_tr.xpath('td/a')[0].attrib['data-raw'] + '\n')
+        vmess.append(_tr.xpath('td/a')[0].attrib['data-raw'])
         pingThread = vmessPingThread(vmess)
         pingThreads.append(pingThread)
         pingThread.start()
@@ -73,11 +84,24 @@ for index, thread in enumerate(pingThreads):
     # print('waitting for: ', index)
     thread.join()
 
-print("finished quiring!")
-print('start speed testing')
+print("\nFinished quiring!")
+print("There are ", len(pingThreads), "vmesses")
+print('\nStart speed testing')
 
 while vmessQueue.empty() is not True:
     speedThread = vmessSpeedTestThread()
     speedThread.start()
     speedThread.join()
+
+print('speed testing finished')
+
+sorting()
+
+for vmWithS in vmessWithSpeed:
+    print(vmWithS[0])
+    print("down: ", vmWithS[1], "  ", "up: ", vmWithS[2])
+
+with open("sorted.txt", 'w') as f:
+    for vm in vmessWithSpeed:
+        f.write(vm[0])
 
