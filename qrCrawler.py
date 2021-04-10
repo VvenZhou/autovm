@@ -21,10 +21,6 @@ vpingName = "./vping_c3_o5"
 vspeedName = './vspeed_10s'
 
 <<<<<<< HEAD
-subscribe_url = 'https://proxypoolsstest.herokuapp.com/vmess/sub'
-
-maxPingThreadNum = 200
-maxSpeedTestNum = 20
 =======
 subscribe_urls = ['https://proxypoolsstest.herokuapp.com/vmess/sub',
                     'https://jiang.netlify.com',
@@ -42,15 +38,6 @@ vmTestQueue = queue.Queue() # Transfering List data type
 
 def subscriptionDecoding():
 <<<<<<< HEAD
-    try:
-        return_content = urlopen(subscribe_url).read()
-        share_links = b64decode(return_content).decode('utf-8').splitlines()
-        for vm in share_links:
-            vmQueue.put(vm)
-        print('Read subscription complete')
-        print('got ', len(share_links), 'vmesses')
-    except Exception as e:
-        print('Read subscription fail: ', e)
 =======
     for url in subscribe_urls: 
         try:
@@ -75,10 +62,6 @@ def readFromYou():
             vmQueue.put(vStr)
 
 <<<<<<< HEAD
-def runPing():
-    vmStr = vmQueue.get()
-    pingCmd = [vpingName, vmStr]
-    try:
 =======
 
 def runPing(vmStr):
@@ -95,10 +78,6 @@ def runPing(vmStr):
         vmQueue.task_done()
 
 <<<<<<< HEAD
-def runSpeedTest():
-    vmStr = vmPingQueue.get()
-    testCmd = [vspeedName, vmStr]
-    try: 
 =======
 def runSpeedTest(vmStr):
     try: 
@@ -114,7 +93,6 @@ def runSpeedTest(vmStr):
         vmPingQueue.task_done()
     except Exception as e: 
 <<<<<<< HEAD
-        vmPingQueue.task_done()
 =======
         pass
 
@@ -133,14 +111,6 @@ def pingListener():
 #    k = 0
     while True:
 <<<<<<< HEAD
-        if vmQueue.empty() is not True:
-            pThread = executor.submit(runPing)
-            sleep(0.05)
-        else:
-            print('vmQueue is joining')
-            vmQueue.join()
-            print("vmQueue joined, ping is shutting down...")
-            executor.shutdown(wait = True)
 =======
         try:
             vmStr = vmQueue.get(block = False)
@@ -171,11 +141,6 @@ def speedTestListener():
         except Exception as e:
             if pLQ == 1:
 <<<<<<< HEAD
-                print("vmPingQueue is joining")
-                vmPingQueue.join()
-                print("vmPingQueue joined, st is shutting down...")
-                print()
-                executor.shutdown(wait = True)
 =======
 >>>>>>> dev
                 break
@@ -216,9 +181,6 @@ if __name__ == '__main__':
             else:
                 if sLQ == 1:
 <<<<<<< HEAD
-                    print('vmTestQueue is joining')
-                    vmTestQueue.join()
-                    print("vmTestQueu joined")
 =======
 #                    print('vmTestQueue is joining')
 #                    vmTestQueue.join()
