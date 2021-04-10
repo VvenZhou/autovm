@@ -20,10 +20,19 @@ fileNameRead = "youneedwind.html"
 vpingName = "./vping_c3_o5"
 vspeedName = './vspeed_10s'
 
+<<<<<<< HEAD
 subscribe_url = 'https://proxypoolsstest.herokuapp.com/vmess/sub'
 
 maxPingThreadNum = 200
 maxSpeedTestNum = 20
+=======
+subscribe_urls = ['https://proxypoolsstest.herokuapp.com/vmess/sub',
+                    'https://jiang.netlify.com',
+                    'https://raw.githubusercontent.com/freefq/free/master/v2']
+
+maxPingThreadNum = 100
+maxSpeedTestNum = 10
+>>>>>>> dev
 pLQ = 0     # ping listener quit
 sLQ = 0     # speedTest listener quit
 
@@ -32,6 +41,7 @@ vmPingQueue = queue.Queue() # Transfering String data type
 vmTestQueue = queue.Queue() # Transfering List data type
 
 def subscriptionDecoding():
+<<<<<<< HEAD
     try:
         return_content = urlopen(subscribe_url).read()
         share_links = b64decode(return_content).decode('utf-8').splitlines()
@@ -41,6 +51,18 @@ def subscriptionDecoding():
         print('got ', len(share_links), 'vmesses')
     except Exception as e:
         print('Read subscription fail: ', e)
+=======
+    for url in subscribe_urls: 
+        try:
+            return_content = urlopen(url).read()
+            share_links = b64decode(return_content).decode('utf-8').splitlines()
+            for vm in share_links:
+                vmQueue.put(vm)
+            print('subs ', url)
+            print('got ', len(share_links), 'vmesses')
+        except Exception as e:
+            print('Read subscription fail: ', e)
+>>>>>>> dev
 
 def readFromYou():
     with open(fileNameRead, 'r') as f:
@@ -52,10 +74,17 @@ def readFromYou():
             vStr = (_tr.xpath('td/a')[0].attrib['data-raw'])
             vmQueue.put(vStr)
 
+<<<<<<< HEAD
 def runPing():
     vmStr = vmQueue.get()
     pingCmd = [vpingName, vmStr]
     try:
+=======
+
+def runPing(vmStr):
+    try:
+        pingCmd = [vpingName, vmStr]
+>>>>>>> dev
         runPing = subprocess.run(pingCmd, capture_output=True, text=True, timeout = 10)
         avgPing = re.findall(r"\d+\/(\d+)\/\d+",runPing.stdout.split('\n')[15])
         if int(avgPing[0]) != 0:
@@ -65,10 +94,16 @@ def runPing():
     except Exception as e:
         vmQueue.task_done()
 
+<<<<<<< HEAD
 def runSpeedTest():
     vmStr = vmPingQueue.get()
     testCmd = [vspeedName, vmStr]
     try: 
+=======
+def runSpeedTest(vmStr):
+    try: 
+        testCmd = [vspeedName, vmStr]
+>>>>>>> dev
         runTest = subprocess.run(testCmd, capture_output=True, text=True, timeout = 30)
         downStr = runTest.stdout.split('\n')[13]
         downSpeed = re.findall(r"\d+.\d+", downStr)
@@ -78,13 +113,26 @@ def runSpeedTest():
         print("st got one")
         vmPingQueue.task_done()
     except Exception as e: 
+<<<<<<< HEAD
         vmPingQueue.task_done()
+=======
+        pass
+
+#def callb(fn):
+#    if fn.cancelled():
+#        print('{}: canceled'.format(fn.arg))
+#    elif fn.done():
+#        print('{}: done'.format(fn.arg))
+>>>>>>> dev
 
 def pingListener():
     print('pingListener start')
     global pLQ
     executor = TPE(max_workers = maxPingThreadNum) 
+#    ths = []
+#    k = 0
     while True:
+<<<<<<< HEAD
         if vmQueue.empty() is not True:
             pThread = executor.submit(runPing)
             sleep(0.05)
@@ -93,7 +141,21 @@ def pingListener():
             vmQueue.join()
             print("vmQueue joined, ping is shutting down...")
             executor.shutdown(wait = True)
+=======
+        try:
+            vmStr = vmQueue.get(block = False)
+            vmQueue.task_done()
+            pThread = executor.submit(runPing, vmStr)
+#            print("thread ", k, ' created')
+#            pThread.arg = k
+#            pThread.add_done_callback(callb)
+#            ths.append((pThread, k))
+#            k = k + 1
+        except Exception as e:
+            print('waitting for more vmesses...')
+>>>>>>> dev
             break
+    executor.shutdown(wait = True)
     pLQ = 1
     print('pingListener stop')
 
@@ -102,18 +164,23 @@ def speedTestListener():
     global pLQ, sLQ
     executor = TPE(maxSpeedTestNum) 
     while True:
-        if vmPingQueue.empty() is not True:
-            sThread = executor.submit(runSpeedTest)
-            sleep(2)
-        else:
+        try:
+            vmStr = vmPingQueue.get(block = False)
+            vmPingQueue.task_done()
+            sThread = executor.submit(runSpeedTest, vmStr)
+        except Exception as e:
             if pLQ == 1:
+<<<<<<< HEAD
                 print("vmPingQueue is joining")
                 vmPingQueue.join()
                 print("vmPingQueue joined, st is shutting down...")
                 print()
                 executor.shutdown(wait = True)
+=======
+>>>>>>> dev
                 break
             sleep(3)
+    executor.shutdown(wait = True)
     sLQ = 1
     print('speedTestListener stop')
 
@@ -148,9 +215,15 @@ if __name__ == '__main__':
                 sleep(5)
             else:
                 if sLQ == 1:
+<<<<<<< HEAD
                     print('vmTestQueue is joining')
                     vmTestQueue.join()
                     print("vmTestQueu joined")
+=======
+#                    print('vmTestQueue is joining')
+#                    vmTestQueue.join()
+#                    print("vmTestQueu joined")
+>>>>>>> dev
                     pListenerEx.shutdown(wait = False)
                     sListenerEx.shutdown(wait = False)
                     break
