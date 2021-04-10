@@ -4,59 +4,98 @@ from lxml import etree
 from io import StringIO
 import subprocess
 import threading
-import time
+from time import sleep
 import queue
 import re
 
+from concurrent.futures import ThreadPoolExecutor as TPE
+
 parser = etree.HTMLParser()
 
-fileNameWrite = "nodes_youneedwind.txt"
+fileName_echoOut = "vmOut.txt"
 fileNameRead = "youneedwind.html"
 vpingName = "./vping_c3_o5"
 vspeedName = './vspeed_10s'
 
-threadingNum = 200
-pingThreads = []
+maxPingThreadNum = 170
+maxSpeedTestNum = 20
+pLQ = 0     # ping listener quit
+sLQ = 0     # speedTest listener quit
 
-vmessQueue = queue.Queue()
-vmessWithSpeed = []
-vmessFinalOutQueue = queue.Queue()
+vmQueue = queue.Queue()    # Transfering String data type
+vmPingQueue = queue.Queue() # Transfering String data type
+vmTestQueue = queue.Queue() # Transfering List data type
 
-class vmessPingThread(threading.Thread):
-    def __init__(self, vm):
-        threading.Thread.__init__(self)
-        self.vm = vm
+def runPing():
+    vmStr = vmQueue.get()
+    pingCmd = [vpingName, vmStr]
+    runPing = subprocess.run(pingCmd, capture_output=True, text=True)
+    try:
+        avgPing = re.findall(r"\d+\/(\d+)\/\d+",runPing.stdout.split('\n')[15])
+        if int(avgPing[0]) != 0:
+            vmPingQueue.put(vmStr)
+            print('ping got one!')
+    except Exception as e:
+        pass
 
-    def run(self):
-        pingCmd = [vpingName, self.vm]
-        runPing = subprocess.run(pingCmd, capture_output=True, text=True)
-        try:
-            avgPing = re.findall(r"\d+\/(\d+)\/\d+",runPing.stdout.split('\n')[15])
-            if int(avgPing[0]) != 0:
-                vmessQueue.put(self.vm)
-        except Exception as e:
-            pass
+def runSpeedTest():
+    vmStr = vmPingQueue.get()
+    print('st in run')
+    testCmd = [vspeedName, vmStr]
+    runTest = subprocess.run(testCmd, capture_output=True, text=True)
+    try: 
+        downStr = runTest.stdout.split('\n')[13]
+        downSpeed = re.findall(r"\d+.\d+", downStr)
+        upStr = runTest.stdout.split('\n')[14]
+        upSpeed = re.findall(r"\d+.\d+", upStr)
+        vmTestQueue.put([vmStr, float(downSpeed[0]), float(upSpeed[0])])
+        print("st got one")
+    except Exception as e: 
+        pass
+    print('st end')
 
-class vmessSpeedTestThread(threading.Thread):
-    def __init__(self):
-        threading.Thread.__init__(self)
 
-    def run(self):
-        if vmessQueue.empty() is not True:
-            vm = vmessQueue.get()
-            print(vm)
-            testCmd = [vspeedName, vm]
-            runTest = subprocess.run(testCmd, capture_output=True, text=True)
-            try: 
-                downStr = runTest.stdout.split('\n')[13]
-                downSpeed = re.findall(r"\d+.\d+", downStr)
-                upStr = runTest.stdout.split('\n')[14]
-                upSpeed = re.findall(r"\d+.\d+", upStr)
-                vmessWithSpeed.append([vm, float(downSpeed[0]), float(upSpeed[0])])
-                print(downStr)
-                print(upStr)
-            except Exception as e: 
-                print(e)
+def readFromYou():
+    with open(fileNameRead, 'r') as f:
+        data = f.read()
+        tree = etree.parse(StringIO(data), parser)
+        parent = tree.xpath('//*[@id="post-box"]/div/section/div[2]/table/tbody')
+        trs = parent[0].xpath('tr')
+        for _tr in trs:
+            vStr = (_tr.xpath('td/a')[0].attrib['data-raw'])
+            vmQueue.put(vStr)
+
+def pingListener():
+    print('pingListener start')
+    global pLQ
+    executor = TPE(max_workers = maxPingThreadNum) 
+    while True:
+        if vmQueue.empty() is not True:
+            pThread = executor.submit(runPing)
+            sleep(0.05)
+        else:
+            print("ping is shutting down...")
+            executor.shutdown(wait = True)
+            break
+    pLQ = 1
+    print('pingListener stop')
+
+def speedTestListener():
+    print('speedTestListener start')
+    global pLQ, sLQ
+    executor = TPE(maxSpeedTestNum) 
+    while True:
+        if vmPingQueue.empty() is not True:
+            sThread = executor.submit(runSpeedTest)
+            sleep(2)
+        else:
+            if pLQ == 1:
+                print('st is shutting down...')
+                executor.shutdown(wait = True)
+                break
+            sleep(3)
+    sLQ = 1
+    print('speedTestListener stop')
 
 def subscriptionDecoding():
     pass
@@ -64,42 +103,36 @@ def subscriptionDecoding():
 def sorting():
     vmessWithSpeed.sort(key=lambda down: down[1], reverse = True)
 
-with open(fileNameRead, 'r') as f:
-    data = f.read()
-    tree = etree.parse(StringIO(data), parser)
-    parent = tree.xpath('//*[@id="post-box"]/div/section/div[2]/table/tbody')
-    trs = parent[0].xpath('tr')
-    vmess = ""
-    for _tr in trs:
-        while(threading.activeCount() >= threadingNum):
-            time.sleep(3)
-        vmess = (_tr.xpath('td/a')[0].attrib['data-raw'])
-        pingThread = vmessPingThread(vmess)
-        pingThreads.append(pingThread)
-        pingThread.start()
+def echoOut(fil):
+    vmLst = vmTestQueue.get()
+    vmStrWithDownUp = vmLst[0] + '\nDown: ' +str(vmLst[1]) + ' Up: ' + str(vmLst[2]) + '\n'
+    print(vmStrWithDownUp)
+    fil.write(vmStrWithDownUp)
 
-for index, thread in enumerate(pingThreads):
-    # print('waitting for: ', index)
-    thread.join()
 
-print("\nFinished quiring!")
-print("There are ", len(pingThreads), "vmesses")
-print('\nStart speed testing')
+if __name__ == '__main__':
 
-while vmessQueue.empty() is not True:
-    speedThread = vmessSpeedTestThread()
-    speedThread.start()
-    speedThread.join()
+    readFromYou()
 
-print('speed testing finished')
+    pListenerEx = TPE(1)
+    pL = pListenerEx.submit(pingListener)
 
-sorting()
+    sListenerEx = TPE(1)
+    sL = sListenerEx.submit(speedTestListener)
 
-for vmWithS in vmessWithSpeed:
-    print(vmWithS[0])
-    print("down: ", vmWithS[1], "  ", "up: ", vmWithS[2])
-
-with open("sorted.txt", 'w') as f:
-    for vm in vmessWithSpeed:
-        f.write(vm[0])
+    try:
+        echoOutFil = open(fileName_echoOut, 'a')
+        while True:
+            if vmTestQueue.empty() is not True:
+                echoOut(echoOutFil)
+                sleep(5)
+            else:
+                if sLQ == 1:
+                    pListenerEx.shutdown()
+                    sListenerEx.shutdown()
+                    break
+                sleep(5)
+        echoOutFil.close()
+    except Exception as e:
+        print("Error: echo file: ", e)
 
