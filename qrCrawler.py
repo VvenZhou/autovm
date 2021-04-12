@@ -3,17 +3,13 @@
 from lxml import etree
 from io import StringIO
 import subprocess
-import threading
 from time import sleep
 import queue
 import re
 from urllib.request import urlopen
 
-import os
 from concurrent.futures import ThreadPoolExecutor as TPE
 from base64 import b64decode
-
-parser = etree.HTMLParser()
 
 fileName_echoOut = "vmOut.txt"
 fileNameRead = "youneedwind.html"
@@ -30,8 +26,12 @@ subscribe_urls = ['https://proxypoolsstest.herokuapp.com/vmess/sub',
 
 maxPingThreadNum = 100
 maxSpeedTestNum = 10
-pLQ = 0     # ping listener quit state
-sLQ = 0     # speedTest listener quit state
+
+# global status flag, No modifying!
+pLQ = 0     # ping listener quit status
+sLQ = 0     # speedTest listener quit status
+
+parser = etree.HTMLParser()
 
 vmQueue = queue.Queue()    # Transfering String data type
 vmPingQueue = queue.Queue() # Transfering String data type
@@ -63,7 +63,7 @@ def runPing(vmStr):
     try:
         pingCmd = [vpingName, '-c', pCount, '-o', pTimeout, vmStr]
         runPing = subprocess.run(pingCmd, capture_output=True, text=True)
-        print(runPing.stdout.split('\n')[int(pCount) + 12])
+#        print(runPing.stdout.split('\n')[int(pCount) + 12])
         avgPing = re.findall(r"\d+\/(\d+)\/\d+",runPing.stdout.split('\n')[int(pCount) + 12])
         if int(avgPing[0]) != 0:
             vmPingQueue.put(vmStr)
