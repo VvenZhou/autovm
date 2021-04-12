@@ -17,8 +17,12 @@ parser = etree.HTMLParser()
 
 fileName_echoOut = "vmOut.txt"
 fileNameRead = "youneedwind.html"
-vpingName = "./vping_c3_o5"
-vspeedName = './vspeed_10s'
+vpingName = "./vping"
+vspeedName = './vspeed'
+
+pCount = '3'
+pTimeout = '5'
+sTimeout = '15'
 
 subscribe_urls = ['https://proxypoolsstest.herokuapp.com/vmess/sub',
                     'https://jiang.netlify.com',
@@ -26,9 +30,8 @@ subscribe_urls = ['https://proxypoolsstest.herokuapp.com/vmess/sub',
 
 maxPingThreadNum = 100
 maxSpeedTestNum = 10
->>>>>>> dev
-pLQ = 0     # ping listener quit
-sLQ = 0     # speedTest listener quit
+pLQ = 0     # ping listener quit state
+sLQ = 0     # speedTest listener quit state
 
 vmQueue = queue.Queue()    # Transfering String data type
 vmPingQueue = queue.Queue() # Transfering String data type
@@ -58,9 +61,10 @@ def readFromYou():
 
 def runPing(vmStr):
     try:
-        pingCmd = [vpingName, vmStr]
-        runPing = subprocess.run(pingCmd, capture_output=True, text=True, timeout = 10)
-        avgPing = re.findall(r"\d+\/(\d+)\/\d+",runPing.stdout.split('\n')[15])
+        pingCmd = [vpingName, '-c', pCount, '-o', pTimeout, vmStr]
+        runPing = subprocess.run(pingCmd, capture_output=True, text=True)
+        print(runPing.stdout.split('\n')[int(pCount) + 12])
+        avgPing = re.findall(r"\d+\/(\d+)\/\d+",runPing.stdout.split('\n')[int(pCount) + 12])
         if int(avgPing[0]) != 0:
             vmPingQueue.put(vmStr)
 #            print('ping got one!')
@@ -70,8 +74,8 @@ def runPing(vmStr):
 
 def runSpeedTest(vmStr):
     try: 
-        testCmd = [vspeedName, vmStr]
-        runTest = subprocess.run(testCmd, capture_output=True, text=True, timeout = 30)
+        testCmd = [vspeedName, '-t', sTimeout, vmStr]
+        runTest = subprocess.run(testCmd, capture_output=True, text=True)
         downStr = runTest.stdout.split('\n')[13]
         downSpeed = re.findall(r"\d+.\d+", downStr)
         upStr = runTest.stdout.split('\n')[14]
@@ -143,7 +147,7 @@ def echoOut(fil):
 if __name__ == '__main__':
 
     readFromYou()
-    subscriptionDecoding()
+#   subscriptionDecoding()
 
     pListenerEx = TPE(1)
     pL = pListenerEx.submit(pingListener)
