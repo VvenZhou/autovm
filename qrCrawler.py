@@ -7,35 +7,38 @@ from time import sleep
 import queue
 import re
 from urllib.request import urlopen
-
 from concurrent.futures import ThreadPoolExecutor as TPE
 from base64 import b64decode
 
 fileName_echoOut = "vmOut.txt"
 fileNameRead = "youneedwind.html"
+fileNameJsnOut = 'x.json'
 vpingName = "./vping"
 vspeedName = './vspeed'
 
-pCount = '3'
+pCount = '5'
 pTimeout = '5'
-sTimeout = '15'
+sTimeout = '10'
 
-subscribe_urls = ['https://proxypoolsstest.herokuapp.com/vmess/sub',
+subscribe_urls = ['https://raw.githubusercontent.com/ssrsub/ssr/master/v2ray',
                     'https://jiang.netlify.com',
                     'https://raw.githubusercontent.com/freefq/free/master/v2']
 
 maxPingThreadNum = 100
-maxSpeedTestNum = 10
+maxSpeedTestNum = 20
+
+parser = etree.HTMLParser()
+
+vmQueue = queue.Queue()    # Transfering String data type       subs -> ping
+vmPingQueue = queue.Queue() # Transfering String data type      ping -> speedTest
+vmTestQueue = queue.Queue() # Transfering List data type        speedTest good
 
 # global status flag, No modifying!
 pLQ = 0     # ping listener quit status
 sLQ = 0     # speedTest listener quit status
 
-parser = etree.HTMLParser()
-
-vmQueue = queue.Queue()    # Transfering String data type
-vmPingQueue = queue.Queue() # Transfering String data type
-vmTestQueue = queue.Queue() # Transfering List data type
+vmes = []
+vmesOut = []
 
 def subscriptionDecoding():
     for url in subscribe_urls: 
@@ -43,7 +46,7 @@ def subscriptionDecoding():
             return_content = urlopen(url).read()
             share_links = b64decode(return_content).decode('utf-8').splitlines()
             for vm in share_links:
-                vmQueue.put(vm)
+                vmes.append(vm)
             print('subs ', url)
             print('got ', len(share_links), 'vmesses')
         except Exception as e:
@@ -57,57 +60,42 @@ def readFromYou():
         trs = parent[0].xpath('tr')
         for _tr in trs:
             vStr = (_tr.xpath('td/a')[0].attrib['data-raw'])
-            vmQueue.put(vStr)
+            vmes.append(vStr)
 
 def runPing(vmStr):
     try:
         pingCmd = [vpingName, '-c', pCount, '-o', pTimeout, vmStr]
         runPing = subprocess.run(pingCmd, capture_output=True, text=True)
-#        print(runPing.stdout.split('\n')[int(pCount) + 12])
         avgPing = re.findall(r"\d+\/(\d+)\/\d+",runPing.stdout.split('\n')[int(pCount) + 12])
         if int(avgPing[0]) != 0:
             vmPingQueue.put(vmStr)
 #            print('ping got one!')
-        vmQueue.task_done()
     except Exception as e:
-        vmQueue.task_done()
+        pass
 
 def runSpeedTest(vmStr):
     try: 
         testCmd = [vspeedName, '-t', sTimeout, vmStr]
         runTest = subprocess.run(testCmd, capture_output=True, text=True)
         downStr = runTest.stdout.split('\n')[13]
+        location = re.findall(r"\((.*)\)", runTest.stdout.split('\n')[11])[0]
         downSpeed = re.findall(r"\d+.\d+", downStr)
         upStr = runTest.stdout.split('\n')[14]
         upSpeed = re.findall(r"\d+.\d+", upStr)
-        vmTestQueue.put([vmStr, float(downSpeed[0]), float(upSpeed[0])])
+        vmTestQueue.put([vmStr, float(downSpeed[0]), float(upSpeed[0]), location])
         print("st got one")
-        vmPingQueue.task_done()
     except Exception as e: 
         pass
-
-#def callb(fn):
-#    if fn.cancelled():
-#        print('{}: canceled'.format(fn.arg))
-#    elif fn.done():
-#        print('{}: done'.format(fn.arg))
 
 def pingListener():
     print('pingListener start')
     global pLQ
     executor = TPE(max_workers = maxPingThreadNum) 
-#    ths = []
-#    k = 0
     while True:
         try:
             vmStr = vmQueue.get(block = False)
             vmQueue.task_done()
             pThread = executor.submit(runPing, vmStr)
-#            print("thread ", k, ' created')
-#            pThread.arg = k
-#            pThread.add_done_callback(callb)
-#            ths.append((pThread, k))
-#            k = k + 1
         except Exception as e:
             print('waitting for more vmesses...')
             break
@@ -133,21 +121,46 @@ def speedTestListener():
     print('speedTestListener stop')
 
 
-def sorting():
-    vmessWithSpeed.sort(key=lambda down: down[1], reverse = True)
+def sorting(vmLst):
+    vmLst.sort(key=lambda down: down[1], reverse = False)
+    return vmLst
 
-def echoOut(fil):
+def echoOut():
     vmLst = vmTestQueue.get()
-    vmStrWithDownUp = vmLst[0] + '\nDown: ' +str(vmLst[1]) + ' Up: ' + str(vmLst[2]) + '\n'
-    print(vmStrWithDownUp)
-    fil.write(vmStrWithDownUp)
     vmTestQueue.task_done()
+    vmesOut.append(vmLst)
+    vmStr = vmLst[0] + '\nDown: ' +str(vmLst[1]) + ' Up: ' + str(vmLst[2]) + ' location: ' + vmLst[3]
+    print(vmStr)
+
+def xrayThread(vmStr):
+    with open(fileNameJsnOut, 'w') as f:
+        vm2jsn = subprocess.run(['./vm2jsn.py', vmStr], capture_output=True, text=True)
+        s = str(vm2jsn.stdout) 
+        f.write(s)
+    print('start xray...')
+    xrayCmd = ['./xray', '-c', fileNameJsnOut]
+    runXray = subprocess.Popen(xrayCmd, stdout=subprocess.PIPE)
+    while True:
+        output = runXray.stdout.readline()
+        if runXray.poll() is not None:
+            print('poll is None')
+            break
+        if output:
+            print(output.strip())
+    # runXray.terminate() to terminate the subprocess
+
+
+def dataHandler():
+    readFromYou()
+    subscriptionDecoding()
 
 
 if __name__ == '__main__':
 
     readFromYou()
-#   subscriptionDecoding()
+    subscriptionDecoding()
+    for vm in vmes:
+        vmQueue.put(vm)
 
     pListenerEx = TPE(1)
     pL = pListenerEx.submit(pingListener)
@@ -156,10 +169,9 @@ if __name__ == '__main__':
     sL = sListenerEx.submit(speedTestListener)
 
     try:
-        echoOutFil = open(fileName_echoOut, 'a')
         while True:
             if vmTestQueue.empty() is not True:
-                echoOut(echoOutFil)
+                echoOut()
                 sleep(5)
             else:
                 if sLQ == 1:
@@ -170,7 +182,14 @@ if __name__ == '__main__':
                     sListenerEx.shutdown(wait = False)
                     break
                 sleep(5)
-        echoOutFil.close()
     except Exception as e:
         print("Error: echo file: ", e)
+
+    vmesOut = sorting(vmesOut)
+    with open(fileName_echoOut, 'w') as f:
+        for vmLst in vmesOut:
+            f.writelines(vmLst[0] + '\nDown: ' +str(vmLst[1]) + ' Up: ' + str(vmLst[2]) + ' location: ' + vmLst[3] + '\n')
+#    vmLst = vmesOut.pop()
+#    xrayThread(vmLst[0])
+
 
