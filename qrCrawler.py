@@ -24,8 +24,8 @@ subscribe_urls = ['https://raw.githubusercontent.com/ssrsub/ssr/master/v2ray',
                     'https://jiang.netlify.com',
                     'https://raw.githubusercontent.com/freefq/free/master/v2']
 
-maxPingThreadNum = 100
-maxSpeedTestNum = 20
+maxPingThreadNum = 10
+maxSpeedTestNum = 5
 
 parser = etree.HTMLParser()
 
@@ -39,6 +39,12 @@ sLS = 0     # speedTest listener quit status
 
 vmes = []
 vmesOut = []
+
+def dataPipeIsEmpty():
+    if vmQueue.empty() and vmPingQueue.empty() and vmTestQueue.empty() is True:
+        return True
+    else:
+        return False
 
 def subsDecoding():
     global vmes
@@ -92,6 +98,7 @@ def runSpeedTest(vmStr):
 def pingListener():
     print('pingListener start')
     global pLS
+    pLS = 1
     executor = TPE(max_workers = maxPingThreadNum) 
     while True:
         try:
@@ -100,13 +107,15 @@ def pingListener():
             pThread = executor.submit(runPing, vmStr)
         except Exception as e:
             print('waitting for more vmesses...')
-            sleep(10)
+            break
     executor.shutdown(wait = True)
+    pLS = 0
     print('pingListener stop')
 
 def speedTestListener():
     print('speedTestListener start')
     global pLS, sLS
+    sLS = 1
     executor = TPE(maxSpeedTestNum) 
     while True:
         try:
@@ -114,8 +123,11 @@ def speedTestListener():
             vmPingQueue.task_done()
             sThread = executor.submit(runSpeedTest, vmStr)
         except Exception as e:
-            sleep(10)
+            if pLS == 0:
+                break
+            sleep(5)
     executor.shutdown(wait = True)
+    sLS = 0
     print('speedTestListener stop')
 
 def writeOutListener():
@@ -130,10 +142,13 @@ def writeOutListener():
                 print(vmStr)
                 sleep(5)
             else:
+                if dataPipeIsEmpty() is True:
+                    break
                 sleep(5)
     except Exception as e:
         print("Error: writeOutListener ", e)
         print("quite")
+    print('writeOutListener stop')
 
 
 def sort(vmLst):
@@ -157,15 +172,7 @@ def xrayThread(vmStr):
             print(output.strip())
     # runXray.terminate() to terminate the subprocess
 
-def dataPipeIsEmpty():
-    if vmQueue.empty() and vmPingQueue.empty() and vmTestQueue.empty() is True:
-        return True
-    else:
-        return False
-
-
 def vmFullPullandCheck():
-    
     readFromYou()
     subsDecoding()
     for vm in vmes:
@@ -175,7 +182,6 @@ def vmFullPullandCheck():
     print("first crawling done")
     vmGood = sort(vmesOut)
     vmesOut.clear()
-    
     return 0
 
 def checkAvailability(vmLst):
@@ -197,13 +203,37 @@ def haha():
 
 
 if __name__ == '__main__':
+    readFromYou()
+    subsDecoding()
+    for vm in vmes:
+        vmQueue.put(vm)
 
     pListenerEx = TPE(1)
     pL = pListenerEx.submit(pingListener)
 
     sListenerEx = TPE(1)
     sL = sListenerEx.submit(speedTestListener)
-    vmesOut = sorting(vmesOut)
+
+    try:
+        while True:
+            if vmTestQueue.empty() is not True:
+                vmLst = vmTestQueue.get()
+                vmTestQueue.task_done()
+                vmesOut.append(vmLst)
+                vmStr = vmLst[0] + '\nDown: ' +str(vmLst[1]) + ' Up: ' + str(vmLst[2]) + ' location: ' + vmLst[3]
+                print(vmStr)
+                sleep(5)
+            else:
+                if sLS == 0:
+                    break
+                sleep(5)
+    except Exception as e:
+        print("Error: writeOutListener ", e)
+        print("quite")
+    print('writeOutListener stop')
+
+    vmesOut = sort(vmesOut)
+
     with open(fileName_echoOut, 'w') as f:
         for vmLst in vmesOut:
             f.writelines(vmLst[0] + '\nDown: ' +str(vmLst[1]) + ' Up: ' + str(vmLst[2]) + ' location: ' + vmLst[3] + '\n')
