@@ -68,9 +68,8 @@ def runPing(vmStr):
         if int(avgPing[0]) != 0:
             vmPingQueue.put(vmStr)
 #            print('ping got one!')
-        vmQueue.task_done()
     except Exception as e:
-        vmQueue.task_done()
+        pass
 
 def runSpeedTest(vmStr):
     try: 
@@ -82,7 +81,6 @@ def runSpeedTest(vmStr):
         upSpeed = re.findall(r"\d+.\d+", upStr)
         vmTestQueue.put([vmStr, float(downSpeed[0]), float(upSpeed[0])])
         print("st got one")
-        vmPingQueue.task_done()
     except Exception as e: 
         pass
 
