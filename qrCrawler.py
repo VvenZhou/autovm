@@ -34,13 +34,14 @@ vmPingQueue = queue.Queue() # Transfering String data type      ping -> speedTes
 vmTestQueue = queue.Queue() # Transfering List data type        speedTest good
 
 # global status flag, No modifying!
-pLQ = 0     # ping listener quit status
-sLQ = 0     # speedTest listener quit status
+pLS = 0     # ping listener quit status
+sLS = 0     # speedTest listener quit status
 
 vmes = []
 vmesOut = []
 
-def subscriptionDecoding():
+def subsDecoding():
+    global vmes
     for url in subscribe_urls: 
         try:
             return_content = urlopen(url).read()
@@ -53,6 +54,7 @@ def subscriptionDecoding():
             print('Read subscription fail: ', e)
 
 def readFromYou():
+    global vmes
     with open(fileNameRead, 'r') as f:
         data = f.read()
         tree = etree.parse(StringIO(data), parser)
@@ -89,7 +91,7 @@ def runSpeedTest(vmStr):
 
 def pingListener():
     print('pingListener start')
-    global pLQ
+    global pLS
     executor = TPE(max_workers = maxPingThreadNum) 
     while True:
         try:
@@ -98,14 +100,13 @@ def pingListener():
             pThread = executor.submit(runPing, vmStr)
         except Exception as e:
             print('waitting for more vmesses...')
-            break
+            sleep(10)
     executor.shutdown(wait = True)
-    pLQ = 1
     print('pingListener stop')
 
 def speedTestListener():
     print('speedTestListener start')
-    global pLQ, sLQ
+    global pLS, sLS
     executor = TPE(maxSpeedTestNum) 
     while True:
         try:
@@ -113,24 +114,31 @@ def speedTestListener():
             vmPingQueue.task_done()
             sThread = executor.submit(runSpeedTest, vmStr)
         except Exception as e:
-            if pLQ == 1:
-                break
-            sleep(3)
+            sleep(10)
     executor.shutdown(wait = True)
-    sLQ = 1
     print('speedTestListener stop')
 
+def writeOutListener():
+    global vmesOut
+    try:
+        while True:
+            if vmTestQueue.empty() is not True:
+                vmLst = vmTestQueue.get()
+                vmTestQueue.task_done()
+                vmesOut.append(vmLst)
+                vmStr = vmLst[0] + '\nDown: ' +str(vmLst[1]) + ' Up: ' + str(vmLst[2]) + ' location: ' + vmLst[3]
+                print(vmStr)
+                sleep(5)
+            else:
+                sleep(5)
+    except Exception as e:
+        print("Error: writeOutListener ", e)
+        print("quite")
 
-def sorting(vmLst):
+
+def sort(vmLst):
     vmLst.sort(key=lambda down: down[1], reverse = False)
     return vmLst
-
-def echoOut():
-    vmLst = vmTestQueue.get()
-    vmTestQueue.task_done()
-    vmesOut.append(vmLst)
-    vmStr = vmLst[0] + '\nDown: ' +str(vmLst[1]) + ' Up: ' + str(vmLst[2]) + ' location: ' + vmLst[3]
-    print(vmStr)
 
 def xrayThread(vmStr):
     with open(fileNameJsnOut, 'w') as f:
@@ -149,42 +157,52 @@ def xrayThread(vmStr):
             print(output.strip())
     # runXray.terminate() to terminate the subprocess
 
+def dataPipeIsEmpty():
+    if vmQueue.empty() and vmPingQueue.empty() and vmTestQueue.empty() is True:
+        return True
+    else:
+        return False
 
-def dataHandler():
+
+def vmFullPullandCheck():
+    
     readFromYou()
-    subscriptionDecoding()
+    subsDecoding()
+    for vm in vmes:
+        vmQueue.put(vm)
+    while dataPipeIsEmpty() is not True:
+        sleep(5)
+    print("first crawling done")
+    vmGood = sort(vmesOut)
+    vmesOut.clear()
+    
+    return 0
+
+def checkAvailability(vmLst):
+    global vmesOut
+    for vm in vmLst:
+        vmQueue.put(vmStr)
+    while dataPipeIsEmpty() is not True:
+        sleep(5)
+    vmGood = sort(vmesOut)
+    vmesOut.clear()
+    return vmGood
+
+def haha():
+    global vmesOut
+    vmFullPullandCheck()
+    vmGood = sort(vmesOut)
+    vmesOut.clear()
+    vmLst = vmesOut.pop()
 
 
 if __name__ == '__main__':
-
-    readFromYou()
-    subscriptionDecoding()
-    for vm in vmes:
-        vmQueue.put(vm)
 
     pListenerEx = TPE(1)
     pL = pListenerEx.submit(pingListener)
 
     sListenerEx = TPE(1)
     sL = sListenerEx.submit(speedTestListener)
-
-    try:
-        while True:
-            if vmTestQueue.empty() is not True:
-                echoOut()
-                sleep(5)
-            else:
-                if sLQ == 1:
-#                    print('vmTestQueue is joining')
-#                    vmTestQueue.join()
-#                    print("vmTestQueu joined")
-                    pListenerEx.shutdown(wait = False)
-                    sListenerEx.shutdown(wait = False)
-                    break
-                sleep(5)
-    except Exception as e:
-        print("Error: echo file: ", e)
-
     vmesOut = sorting(vmesOut)
     with open(fileName_echoOut, 'w') as f:
         for vmLst in vmesOut:
