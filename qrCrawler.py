@@ -8,6 +8,7 @@ import queue
 import re
 from urllib.request import urlopen
 from concurrent.futures import ThreadPoolExecutor as TPE
+from concurrent.futures import as_completed
 from base64 import b64decode
 
 fileName_echoOut = "vmOut.txt"
@@ -16,16 +17,16 @@ fileNameJsnOut = 'x.json'
 vpingName = "./vping"
 vspeedName = './vspeed'
 
-pCount = '5'
+pCount = '3'
 pTimeout = '5'
-sTimeout = '10'
+sTimeout = '15'
 
 subscribe_urls = ['https://raw.githubusercontent.com/ssrsub/ssr/master/v2ray',
                     'https://jiang.netlify.com',
                     'https://raw.githubusercontent.com/freefq/free/master/v2']
 
-maxPingThreadNum = 10
-maxSpeedTestNum = 5
+maxPingThreadNum = 8
+maxSpeedTestNum = 2
 
 parser = etree.HTMLParser()
 
@@ -36,8 +37,10 @@ vmTestQueue = queue.Queue() # Transfering List data type        speedTest good
 # global status flag, No modifying!
 pLS = 0     # ping listener quit status
 sLS = 0     # speedTest listener quit status
+pLC = 0
 
 vmes = []
+vmNoDup = []
 vmesOut = []
 
 def dataPipeIsEmpty():
@@ -53,7 +56,8 @@ def subsDecoding():
             return_content = urlopen(url).read()
             share_links = b64decode(return_content).decode('utf-8').splitlines()
             for vm in share_links:
-                vmes.append(vm)
+                if vm.split("://")[0] == "vmess":
+                    vmes.append(vm.strip())
             print('subs ', url)
             print('got ', len(share_links), 'vmesses')
         except Exception as e:
@@ -68,18 +72,21 @@ def readFromYou():
         trs = parent[0].xpath('tr')
         for _tr in trs:
             vStr = (_tr.xpath('td/a')[0].attrib['data-raw'])
-            vmes.append(vStr)
+            if vStr.split("://")[0] == "vmess":
+                vmes.append(vStr.strip())
 
 def runPing(vmStr):
     try:
         pingCmd = [vpingName, '-c', pCount, '-o', pTimeout, vmStr]
         runPing = subprocess.run(pingCmd, capture_output=True, text=True)
         avgPing = re.findall(r"\d+\/(\d+)\/\d+",runPing.stdout.split('\n')[int(pCount) + 12])
-        if int(avgPing[0]) != 0:
+        if int(avgPing[0]) != 0 and int(avgPing[0]) <= 2500:
             vmPingQueue.put(vmStr)
-#            print('ping got one!')
+            print("ping got one")
+            return 0
     except Exception as e:
-        pass
+        print("runPing:", e)
+    return 1
 
 def runSpeedTest(vmStr):
     try: 
@@ -93,21 +100,26 @@ def runSpeedTest(vmStr):
         vmTestQueue.put([vmStr, float(downSpeed[0]), float(upSpeed[0]), location])
         print("st got one")
     except Exception as e: 
-        pass
+        print("runSpeed:", e)
 
 def pingListener():
     print('pingListener start')
-    global pLS
+    global pLS, pLC
     pLS = 1
     executor = TPE(max_workers = maxPingThreadNum) 
-    while True:
-        try:
-            vmStr = vmQueue.get(block = False)
-            vmQueue.task_done()
-            pThread = executor.submit(runPing, vmStr)
-        except Exception as e:
-            print('waitting for more vmesses...')
-            break
+    futures = [executor.submit(runPing, vm) for vm in vmNoDup]
+    print([x.result() for x in as_completed(futures)])
+
+#   while True:
+#        try:
+#            vmStr = vmQueue.get(block = False)
+#            vmQueue.task_done()
+#            pLC = pLC + 1
+#            pThread = executor.submit(runPing, vmStr)
+#        except Exception as e:
+#            print(e)
+#            print('waitting for more vmesses...')
+#            break
     executor.shutdown(wait = True)
     pLS = 0
     print('pingListener stop')
@@ -152,8 +164,12 @@ def writeOutListener():
 
 
 def sort(vmLst):
-    vmLst.sort(key=lambda down: down[1], reverse = False)
+    vmLst.sort(key=lambda down: down[1], reverse = True)
     return vmLst
+
+def vm2str(vmStr):
+    j = subprocess.run(['./vm2jsn.py', vmStr], capture_output=True, text=True)
+    return str(j.stdout)
 
 def xrayThread(vmStr):
     with open(fileNameJsnOut, 'w') as f:
@@ -205,7 +221,15 @@ def haha():
 if __name__ == '__main__':
     readFromYou()
     subsDecoding()
-    for vm in vmes:
+
+    with open(fileName_echoOut, 'r') as f:
+        for vm in f.readlines():
+            if vm.split("://")[0] == "vmess":
+                vmes.append(vm.strip())
+    print("there are", len(vmes), "vmesses in total")
+    vmNoDup = list(set(vmes))
+    print(len(vmNoDup), "in no duplicate")
+    for vm in vmNoDup:
         vmQueue.put(vm)
 
     pListenerEx = TPE(1)
@@ -213,7 +237,8 @@ if __name__ == '__main__':
 
     sListenerEx = TPE(1)
     sL = sListenerEx.submit(speedTestListener)
-
+#
+    sleep(5)
     try:
         while True:
             if vmTestQueue.empty() is not True:
@@ -234,6 +259,9 @@ if __name__ == '__main__':
 
     vmesOut = sort(vmesOut)
 
+    for index, vm in enumerate(vmesOut):
+        with open("data/" + str(index) + ".json", 'w') as f:
+            f.write(vm2str(vm[0]))
     with open(fileName_echoOut, 'w') as f:
         for vmLst in vmesOut:
             f.writelines(vmLst[0] + '\nDown: ' +str(vmLst[1]) + ' Up: ' + str(vmLst[2]) + ' location: ' + vmLst[3] + '\n')
