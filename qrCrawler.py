@@ -262,9 +262,12 @@ if __name__ == '__main__':
     for index, vm in enumerate(vmesOut):
         with open("data/" + str(index) + ".json", 'w') as f:
             f.write(vm2str(vm[0]))
+
     with open(fileName_echoOut, 'w') as f:
         for vmLst in vmesOut:
             f.writelines(vmLst[0] + '\nDown: ' +str(vmLst[1]) + ' Up: ' + str(vmLst[2]) + ' location: ' + vmLst[3] + '\n')
+
+    os.system("mv data/* json/")
 #    vmLst = vmesOut.pop()
 #    xrayThread(vmLst[0])
 
