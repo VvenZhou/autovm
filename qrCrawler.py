@@ -6,6 +6,7 @@ import subprocess
 from time import sleep
 import queue
 import re
+import os
 from urllib.request import urlopen
 from concurrent.futures import ThreadPoolExecutor as TPE
 from concurrent.futures import as_completed
@@ -17,20 +18,20 @@ fileNameJsnOut = 'x.json'
 vpingName = "./vping"
 vspeedName = './vspeed'
 
-pCount = '3'
-pTimeout = '5'
-sTimeout = '15'
+pCount = '3' # vping args. see ./vping --help for more information
+pTimeout = '5' # vping args.
+sTimeout = '15' # vspeed args. see ./vspeed --help for more information
 
-subscribe_urls = ['https://raw.githubusercontent.com/ssrsub/ssr/master/v2ray',
+subscribe_urls = ['https://raw.githubusercontent.com/ssrsub/ssr/master/v2ray',      # subscription urls
                     'https://jiang.netlify.com',
                     'https://raw.githubusercontent.com/freefq/free/master/v2']
 
-maxPingThreadNum = 8
+maxPingThreadNum = 8    # max ping threads 
 maxSpeedTestNum = 2
 
 parser = etree.HTMLParser()
 
-vmQueue = queue.Queue()    # Transfering String data type       subs -> ping
+vmQueue = queue.Queue()    # Transfering String data type       vmesses -> ping
 vmPingQueue = queue.Queue() # Transfering String data type      ping -> speedTest
 vmTestQueue = queue.Queue() # Transfering List data type        speedTest good
 
@@ -109,17 +110,6 @@ def pingListener():
     executor = TPE(max_workers = maxPingThreadNum) 
     futures = [executor.submit(runPing, vm) for vm in vmNoDup]
     print([x.result() for x in as_completed(futures)])
-
-#   while True:
-#        try:
-#            vmStr = vmQueue.get(block = False)
-#            vmQueue.task_done()
-#            pLC = pLC + 1
-#            pThread = executor.submit(runPing, vmStr)
-#        except Exception as e:
-#            print(e)
-#            print('waitting for more vmesses...')
-#            break
     executor.shutdown(wait = True)
     pLS = 0
     print('pingListener stop')
@@ -219,6 +209,7 @@ def haha():
 
 
 if __name__ == '__main__':
+
     readFromYou()
     subsDecoding()
 
@@ -227,6 +218,7 @@ if __name__ == '__main__':
             if vm.split("://")[0] == "vmess":
                 vmes.append(vm.strip())
     print("there are", len(vmes), "vmesses in total")
+
     vmNoDup = list(set(vmes))
     print(len(vmNoDup), "in no duplicate")
     for vm in vmNoDup:
@@ -237,8 +229,8 @@ if __name__ == '__main__':
 
     sListenerEx = TPE(1)
     sL = sListenerEx.submit(speedTestListener)
-#
-    sleep(5)
+
+    sleep(10)
     try:
         while True:
             if vmTestQueue.empty() is not True:
@@ -268,6 +260,7 @@ if __name__ == '__main__':
             f.writelines(vmLst[0] + '\nDown: ' +str(vmLst[1]) + ' Up: ' + str(vmLst[2]) + ' location: ' + vmLst[3] + '\n')
 
     os.system("mv data/* json/")
+
 #    vmLst = vmesOut.pop()
 #    xrayThread(vmLst[0])
 
