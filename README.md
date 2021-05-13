@@ -29,3 +29,11 @@ Name of jsons are based on the speed of each vmess, just simply use them in nume
 You can use any graphical tools to manage vmess connections such as [qv2ray](https://github.com/Qv2ray/Qv2ray), [v2rayN](https://github.com/2dust/v2rayN), [v2rayA](https://github.com/v2rayA/v2rayA), simply import from json files or import from vmess share links.
 
 or use [xray-core](https://github.com/XTLS/Xray-core) which need more modifications but light weight and can be modified in a more flexible way.
+
+# Credits
+This project relies on the following third-party projects:
+
+- vping and vspeed:
+  - [v2fly/vmessping](https://github.com/v2fly/vmessping)
+- vm2jsn.py:
+  - [boypt/vmess2json](https://github.com/boypt/vmess2json)
